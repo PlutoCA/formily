@@ -313,7 +313,6 @@ test('query', () => {
     })
   )
   expect(form.query('object').take()).not.toBeUndefined()
-  expect(form.query('object').take()).not.toBeUndefined()
   expect(form.query('object.void').take()).not.toBeUndefined()
   expect(form.query('object.void.normal').take()).not.toBeUndefined()
   expect(form.query('object.normal').take()).not.toBeUndefined()
@@ -1713,4 +1712,12 @@ test('form initial values ref should not changed with setInitialValues', () => {
     bb: '321',
   })
   expect(form.initialValues === values).toBeTruthy()
+})
+
+test('form query undefined query should not throw error', () => {
+  const form = attach(createForm())
+
+  ;(form.fields as any)['a'] = undefined
+  expect(() => form.query('*').take()).not.toThrowError()
+  expect(Object.keys(form.fields)).toEqual([])
 })

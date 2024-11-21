@@ -39,6 +39,7 @@ import {
   IFormFeedback,
   LifeCycleTypes,
   FieldMatchPattern,
+  FieldFeedbackTypes,
 } from '../types'
 import {
   isArrayField,
@@ -158,7 +159,7 @@ export const patchFieldStates = (
       if (payload) {
         target[address] = payload
         if (target[oldAddress] === payload) {
-          delete target[oldAddress]
+          target[oldAddress] = undefined
         }
       }
       if (address && payload) {
@@ -312,13 +313,13 @@ export const validateToFeedbacks = async (
   })
 
   batch(() => {
-    each(results, (messages, type) => {
+    each(results, (messages, type: FieldFeedbackTypes) => {
       field.setFeedback({
         triggerType,
         type,
         code: pascalCase(`validate-${type}`),
         messages: messages,
-      } as any)
+      })
     })
   })
   return results
@@ -1096,6 +1097,7 @@ export const getArrayParent = (field: BaseField, index = field.index) => {
 export const getObjectParent = (field: BaseField) => {
   let parent: any = field.parent
   while (parent) {
+    if (isArrayField(parent)) return
     if (isObjectField(parent)) return parent
     if (parent === field.form) return
     parent = parent.parent

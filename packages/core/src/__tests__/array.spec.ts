@@ -200,6 +200,47 @@ test('array field move up/down then fields move', () => {
   expect(form.fields['array.3.value']).toBe(line3)
 })
 
+// 重现 issues #3932 , 补全 PR #3992 测试用例
+test('lazy array field query each', () => {
+  const form = attach(createForm())
+  const array = attach(
+    form.createArrayField({
+      name: 'array',
+    })
+  )
+
+  const init = Array.from({ length: 6 }).map((_, i) => ({ value: i }))
+  array.setValue(init)
+
+  // page1: 0, 1
+  // page2: 2, 3 untouch
+  // page3: 4, 5
+  init.forEach((item) => {
+    const len = item.value
+    //2, 3
+    if (len >= 2 && len <= 3) {
+    } else {
+      // 0, 1, 4, 5
+      attach(
+        form.createField({
+          name: 'value',
+          basePath: 'array.' + len,
+        })
+      )
+    }
+  })
+
+  array.insert(1, { value: '11' })
+  expect(() => form.query('*').take()).not.toThrowError()
+  expect(Object.keys(form.fields)).toEqual([
+    'array',
+    'array.0.value',
+    'array.5.value',
+    'array.2.value',
+    'array.6.value',
+  ])
+})
+
 test('void children', () => {
   const form = attach(createForm())
   const array = attach(
@@ -284,23 +325,37 @@ test('fault tolerance', () => {
     })
   )
   array.setValue({} as any)
-  array.push(11) //[11]
-  array.pop() //[]
-  array.remove(1) //[]
-  array.shift() //[]
-  array.unshift(1) //[1]
-  array.move(0, 1) //[undefined,1]
-  array.moveUp(1) //[1,undefined]
-  array.moveDown(1) //[1,undefined]
-  array.insert(1) //[1,undefined]
-  expect(array.value).toEqual([1, undefined])
-  array2.move(1, 1) //[1,undefined]
-  array2.moveUp(2) //[1,undefined]
-  array2.moveUp(0) //[1,undefined]
-  array2.moveDown(0) //[undefined,1]
-  array2.moveDown(1) //[undefined,1]
-  array2.moveDown(2) //[undefined,1]
-  expect(array.value).toEqual([1, undefined])
+  array.push(11)
+  expect(array.value).toEqual([11])
+  array.pop()
+  expect(array.value).toEqual([])
+  array.remove(1)
+  expect(array.value).toEqual([])
+  array.shift()
+  expect(array.value).toEqual([])
+  array.unshift(1)
+  expect(array.value).toEqual([1])
+  array.move(0, 1)
+  expect(array.value).toEqual([1])
+  array.moveUp(1)
+  expect(array.value).toEqual([1])
+  array.moveDown(1)
+  expect(array.value).toEqual([1])
+  array.insert(1)
+  expect(array.value).toEqual([1])
+  array2.move(1, 1)
+  expect(array2.value).toEqual([1, 2])
+  array2.push(3)
+  array2.moveUp(2)
+  expect(array2.value).toEqual([1, 3, 2])
+  array2.moveUp(0)
+  expect(array2.value).toEqual([3, 2, 1])
+  array2.moveDown(0)
+  expect(array2.value).toEqual([2, 3, 1])
+  array2.moveDown(1)
+  expect(array2.value).toEqual([2, 1, 3])
+  array2.moveDown(2)
+  expect(array2.value).toEqual([3, 2, 1])
 })
 
 test('mutation fault tolerance', () => {
@@ -965,6 +1020,13 @@ test('record: find array nest field record', () => {
     })
   )
 
+  const field2 = attach(
+    form.createField({
+      name: 'cc',
+      basePath: 'array.1.a.b.c',
+    })
+  )
+
   expect(field0.records.length).toBe(2)
   expect(field1.records.length).toBe(2)
   expect(field1.records).toEqual([
@@ -973,6 +1035,7 @@ test('record: find array nest field record', () => {
   ])
   expect(field0.record).toEqual({ c: 1, d: 1 })
   expect(field1.record).toEqual({ c: 2, d: 2 })
+  expect(field2.record).toEqual({ c: 2, d: 2 })
 })
 
 test('record: find array field record', () => {

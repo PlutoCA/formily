@@ -2346,3 +2346,59 @@ test('field destructor path with display none', () => {
   expect(form.values).toEqual({})
   expect(aa.value).toEqual([])
 })
+
+test('onInput should ignore HTMLInputEvent propagation', async () => {
+  const form = attach(createForm<any>())
+  const mockHTMLInput = { value: '321' }
+  const mockDomEvent = { target: mockHTMLInput, currentTarget: mockHTMLInput }
+  const aa = attach(
+    form.createField({
+      name: 'aa',
+    })
+  )
+  await aa.onInput(mockDomEvent)
+  expect(aa.value).toEqual('321')
+
+  await aa.onInput({ target: { value: '2' }, currentTarget: { value: '4' } })
+  expect(aa.value).toEqual('321')
+
+  // currentTarget is undefined, skip ignore
+  await aa.onInput({ target: { value: '123' } })
+  expect(aa.value).toEqual('123')
+})
+
+test('onFocus and onBlur with invalid target value', async () => {
+  const form = attach(createForm<any>())
+  const field = attach(
+    form.createField({
+      name: 'aa',
+      validateFirst: true,
+      value: '111',
+      validator: [
+        {
+          triggerType: 'onFocus',
+          format: 'date',
+        },
+        {
+          triggerType: 'onBlur',
+          format: 'url',
+        },
+      ],
+    })
+  )
+
+  await field.onFocus({ target: {} })
+  expect(field.selfErrors).toEqual([])
+  await field.onBlur({ target: {} })
+  expect(field.selfErrors).toEqual([])
+
+  await field.onFocus()
+  expect(field.selfErrors).toEqual([
+    'The field value is not a valid date format',
+  ])
+  await field.onBlur()
+  expect(field.selfErrors).toEqual([
+    'The field value is not a valid date format',
+    'The field value is a invalid url',
+  ])
+})

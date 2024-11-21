@@ -78,6 +78,28 @@ test('multi validate', async () => {
   })
 })
 
+test('message scope', async () => {
+  const results = await validate(
+    '',
+    {
+      required: true,
+      validator() {
+        return 'validate error {{name}}'
+      },
+    },
+    {
+      context: {
+        name: 'scopeName',
+      },
+    }
+  )
+  expect(results).toEqual({
+    error: ['The field value is required', 'validate error scopeName'],
+    success: [],
+    warning: [],
+  })
+})
+
 test('first validate', async () => {
   const results = await validate(
     '',
@@ -300,7 +322,7 @@ test('filter trigger type(unmatch)', async () => {
   })
 })
 
-test('filter trigger type(match first validte)', async () => {
+test('filter trigger type(match first validate)', async () => {
   expect(
     await validate(
       '',
@@ -323,7 +345,7 @@ test('filter trigger type(match first validte)', async () => {
   })
 })
 
-test('filter trigger type(match multi validte)', async () => {
+test('filter trigger type(match multi validate)', async () => {
   expect(
     await validate(
       '',
@@ -380,6 +402,12 @@ test('validate formats(phone)', async () => {
   noError(await validate('', 'phone'))
   hasError(await validate('222333', 'phone'))
   noError(await validate('15934567899', 'phone'))
+})
+
+test('validate formats(money)', async () => {
+  noError(await validate('$12', 'money'))
+  hasError(await validate('$12.', 'money'))
+  noError(await validate('$12.3', 'money'))
 })
 
 test('validate custom validator', async () => {
@@ -467,6 +495,29 @@ test('validator template with format', async () => {
     }),
     '123=123&123'
   )
+})
+
+test('validator template with format and scope', async () => {
+  registerValidateMessageTemplateEngine((message) => {
+    if (typeof message !== 'string') return message
+    return message.replace(/\<\<\s*([\w.]+)\s*\>\>/g, (_, $0) => {
+      return { aa: 123 }[$0]
+    })
+  })
+
+  const result = await validate(
+    '',
+    (value, rules, ctx, format) => {
+      return `<<aa>>=123&${format('<<aa>>{{name}}')}`
+    },
+    {
+      context: {
+        name: 'scopeName',
+      },
+    }
+  )
+
+  expect(result.error[0]).toEqual('123=123&123scopeName')
 })
 
 test('validator order with format', async () => {

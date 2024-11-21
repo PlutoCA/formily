@@ -12,7 +12,6 @@ import { PaginationProps } from 'antd/lib/pagination'
 import { TableProps, ColumnProps } from 'antd/lib/table'
 import { SelectProps } from 'antd/lib/select'
 import cls from 'classnames'
-import { SortableContainer, SortableElement } from 'react-sortable-hoc'
 import { GeneralField, FieldDisplayTypes, ArrayField } from '@formily/core'
 import {
   useField,
@@ -23,7 +22,11 @@ import {
 } from '@formily/react'
 import { isArr, isBool, isFn } from '@formily/shared'
 import { Schema } from '@formily/json-schema'
-import { usePrefixCls } from '../__builtins__'
+import {
+  usePrefixCls,
+  SortableContainer,
+  SortableElement,
+} from '../__builtins__'
 import { ArrayBase, ArrayBaseMixins, IArrayBaseProps } from '../array-base'
 
 interface ObservableColumnSource {
@@ -35,9 +38,13 @@ interface ObservableColumnSource {
 }
 interface IArrayTablePaginationProps extends PaginationProps {
   dataSource?: any[]
+  showPagination?: boolean
   children?: (
     dataSource: any[],
-    pagination: React.ReactNode
+    pagination: React.ReactNode,
+    options: {
+      startIndex: number
+    }
   ) => React.ReactElement
 }
 
@@ -55,6 +62,7 @@ type ComposedArrayTable = React.FC<
 interface PaginationAction {
   totalPage?: number
   pageSize?: number
+  showPagination?: boolean
   changePage?: (page: number) => void
 }
 
@@ -223,6 +231,7 @@ const usePagination = () => {
 const ArrayTablePagination: ReactFC<IArrayTablePaginationProps> = (props) => {
   const [current, setCurrent] = useState(1)
   const prefixCls = usePrefixCls('formily-array-table')
+  const showPagination = props.showPagination ?? true
   const pageSize = props.pageSize || 10
   const size = props.size || 'default'
   const dataSource = props.dataSource || []
@@ -248,7 +257,7 @@ const ArrayTablePagination: ReactFC<IArrayTablePaginationProps> = (props) => {
   }, [totalPage, current])
 
   const renderPagination = () => {
-    if (totalPage <= 1) return
+    if (totalPage <= 1 || !showPagination) return
     return (
       <div className={`${prefixCls}-pagination`}>
         <Space>
@@ -276,19 +285,36 @@ const ArrayTablePagination: ReactFC<IArrayTablePaginationProps> = (props) => {
   return (
     <Fragment>
       <PaginationContext.Provider
-        value={{ totalPage, pageSize, changePage: handleChange }}
+        value={{
+          totalPage,
+          pageSize,
+          changePage: handleChange,
+          showPagination,
+        }}
       >
         {props.children?.(
-          dataSource?.slice(startIndex, endIndex + 1),
-          renderPagination()
+          showPagination
+            ? dataSource?.slice(startIndex, endIndex + 1)
+            : dataSource,
+          renderPagination(),
+          { startIndex }
         )}
       </PaginationContext.Provider>
     </Fragment>
   )
 }
 
-const RowComp = (props: any) => {
-  return <SortableRow index={props['data-row-key'] || 0} {...props} />
+const RowComp: ReactFC<React.HTMLAttributes<HTMLTableRowElement>> = (props) => {
+  const prefixCls = usePrefixCls('formily-array-table')
+  const index = props['data-row-key'] || 0
+  return (
+    <SortableRow
+      lockAxis="y"
+      {...props}
+      index={index}
+      className={cls(props.className, `${prefixCls}-row-${index + 1}`)}
+    />
+  )
 }
 
 export const ArrayTable: ComposedArrayTable = observer((props) => {
@@ -298,48 +324,52 @@ export const ArrayTable: ComposedArrayTable = observer((props) => {
   const dataSource = Array.isArray(field.value) ? field.value.slice() : []
   const sources = useArrayTableSources()
   const columns = useArrayTableColumns(dataSource, field, sources)
-  const pagination = isBool(props.pagination) ? {} : props.pagination
+  const pagination = isBool(props.pagination)
+    ? { showPagination: props.pagination }
+    : props.pagination
   const addition = useAddition()
   const { onAdd, onCopy, onRemove, onMoveDown, onMoveUp } = props
   const defaultRowKey = (record: any) => {
     return dataSource.indexOf(record)
   }
-  const addTdStyles = (node: HTMLElement) => {
+  const addTdStyles = (id: number) => {
+    const node = ref.current?.querySelector(`.${prefixCls}-row-${id}`)
     const helper = document.body.querySelector(`.${prefixCls}-sort-helper`)
-    if (helper) {
-      const tds = node.querySelectorAll('td')
-      requestAnimationFrame(() => {
-        helper.querySelectorAll('td').forEach((td, index) => {
-          if (tds[index]) {
-            td.style.width = getComputedStyle(tds[index]).width
-          }
-        })
+    if (!helper) return
+    const tds = node?.querySelectorAll('td')
+    if (!tds) return
+    requestAnimationFrame(() => {
+      helper.querySelectorAll('td').forEach((td, index) => {
+        if (tds[index]) {
+          td.style.width = getComputedStyle(tds[index]).width
+        }
       })
-    }
+    })
   }
-  const WrapperComp = useCallback(
-    (props: any) => (
-      <SortableBody
-        useDragHandle
-        lockAxis="y"
-        helperClass={`${prefixCls}-sort-helper`}
-        helperContainer={() => {
-          return ref.current?.querySelector('tbody')
-        }}
-        onSortStart={({ node }) => {
-          addTdStyles(node as HTMLElement)
-        }}
-        onSortEnd={({ oldIndex, newIndex }) => {
-          field.move(oldIndex, newIndex)
-        }}
-        {...props}
-      />
-    ),
+  const getWrapperComp = useCallback(
+    (dataSource: any[], start: number) => (props: any) =>
+      (
+        <SortableBody
+          {...props}
+          start={start}
+          list={dataSource.slice()}
+          accessibility={{
+            container: ref.current || undefined,
+          }}
+          onSortStart={(event) => {
+            addTdStyles(event.active.id as number)
+          }}
+          onSortEnd={({ oldIndex, newIndex }) => {
+            field.move(oldIndex, newIndex)
+          }}
+          className={cls(`${prefixCls}-sort-helper`, props.className)}
+        />
+      ),
     [field]
   )
   return (
     <ArrayTablePagination {...pagination} dataSource={dataSource}>
-      {(dataSource, pager) => (
+      {(dataSource, pager, { startIndex }) => (
         <div ref={ref} className={prefixCls}>
           <ArrayBase
             onAdd={onAdd}
@@ -359,7 +389,7 @@ export const ArrayTable: ComposedArrayTable = observer((props) => {
               dataSource={dataSource}
               components={{
                 body: {
-                  wrapper: WrapperComp,
+                  wrapper: getWrapperComp(dataSource, startIndex),
                   row: RowComp,
                 },
               }}
@@ -393,14 +423,23 @@ ArrayBase.mixin(ArrayTable)
 
 const Addition: ArrayBaseMixins['Addition'] = (props) => {
   const array = ArrayBase.useArray()
-  const { totalPage = 0, pageSize = 10, changePage } = usePagination()
+  const {
+    totalPage = 0,
+    pageSize = 10,
+    changePage,
+    showPagination,
+  } = usePagination()
   return (
     <ArrayBase.Addition
       {...props}
       onClick={(e) => {
         // 如果添加数据后将超过当前页，则自动切换到下一页
         const total = array?.field?.value.length || 0
-        if (total === totalPage * pageSize + 1 && isFn(changePage)) {
+        if (
+          showPagination &&
+          total === totalPage * pageSize + 1 &&
+          isFn(changePage)
+        ) {
           changePage(totalPage + 1)
         }
         props.onClick?.(e)
